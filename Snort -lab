@@ -1,0 +1,267 @@
+Cyber 262 Lab: Snort 
+Tasks
+1.	Lab Setup
+2.	Writing Snort rules
+3.	Snort Alerting
+Introduction
+Snort and Suricata are two popular open source intrusion detection and prevention systems (IDPS). Security Onion can run either Snort or Suricata. Our Security Onion machine has been configured to use Snort as its default engine. If you would like additional information on making Suricata your engine please refer to Appendix A at the end of this document. For this lab we will focus on Snort. 
+Snort is free to download and use in both personal and business environments.  Snort is considered a lightweight NIDS based on having a flexible, small-footprint intended for deployment within small-to medium-sized enterprises. Besides simplicity to set up and maintain, Snort can run in any of three modes:
+1. Sniffer mode, which simply reads the packets off the network and displays them for you in a continuous stream on the console (screen).
+2. Packet Logger mode, which logs the packets to disk.
+3. Network Intrusion Detection System (NIDS) mode, which allows Snort to analyze network traffic for matches against a user-defined rule set and performs several actions based upon what it sees.
+Snort monitors network traffic and compares it to a pre-defined rule set. It can also perform actions against these matched rules such as disabling a port. 
+Download the Snort 3 User Manual for reference while completing this lab from https://www.snort.org/documents/1 or from course canvas page.
+
+
+Deliverables for Lab Reports
+Refer to the assignment directions in Canvas for reporting requirements. The directions below will indicate when a Screen Shot or Question Response/Analysis is to be provided by the student for the report. 
+Do not use this document as your Lab report, create a new document based on the Canvas assignment directions.
+Learning Objectives
+The Learning Objectives for this Lab align with the course objectives for this lesson in Canvas. 
+Lab Topology
+For this lab we will utilize the following PLAB Server;
+PLABSONION1 (Victim & HIDS Alerting)	192.168.0.2
+To access the required systems please open up one of the practice lab assignments on the left side which will give you access to the servers. 
+
+Time Allotments: Task 1 is very detailed so allocate at least 45 minutes or do a test run before planning to complete it in one sitting. Each task is Task is independent so they can be done separately with minimal setup from previous tasks.
+
+Task 1 – Lab Setup
+Snort already comes installed in the Security Onion virtual machine.  Once installed, Snort can run as just a sniffer and have all packets captured and logged but this will create an enormous log file to view. Snort works well because of using rules to determine which traffic to log and which traffic to ignore.
+A.	Power on the servers (plabsonion1).
+
+
+B.	How Snort runs depends on specified flags when executing Snort from Terminal command line.
+•	-v View packet headers at console.
+•	-d View application data with IP headers.
+•	-D Run Snort as a daemon.
+•	-e Show data-link layer headers.
+•	-l Run in packet logger mode.
+•	-h Log information relative to home network.
+•	-b Log information to single binary file in logging directory.
+•	-r Read packets contained in tcpdump-formatted log file.
+•	-N Disable packet logging.
+•	-c Specifies which file used to provide ruleset for intrusion detection.
+•	-i Specifies which port to look at when running.
+•	-A Alert using specified alert-mode of fast, full, console, test or none; fast writes alerts to default "alert" file in single-line, syslog style alert message; full writes alert to "alert" file with full decoded header and alert message; none turns off alerting.
+•	-K Select packet logging mode of pcap as default to log packets through pcap library into pcap (tcpdump) format; ascii logs packets in old "directories and files" format with packet printouts in each file; none turns off packet logging.
+•	-T Test and report on the current Snort configuration.
+
+C.	View IP packet headers 
+•	As you can see from above, we have a few different options when it comes to flags used with Snort. The sudo command before snort runs in administrative mode required to open appropriate port. When no port is specified, Snort uses the eth0 port by default.
+
+	sudo snort -v
+•	Snort will commence processing packers and provide output to the terminal console.
+•	Use CTRL+Z to kill the snort process and return to terminal command prompt. If you are using a wireless card then eth0 port is not correct, but instead the wlan0 port accesses the wireless card, so using the -i flag can tell snort to watch the wireless card to check for traffic. For our configuration, use the docker0 interface.
+
+sudo snort -v -i docker0
+
+•	Now Snort can run and display on screen every packet header coming across wlan0 port for wireless card. Thus, Snort can monitor all traffic across your network, but this becomes very impractical.
+
+Task 2: Writing Snort Rules 
+In Intrusion Detection Mode (IDS), Snort launches with a specific configuration file using different sets of rules. In this lab task, you will be writing Snort rules. If a traffic pattern matches a rule, a Snort "alert" will be logged.
+
+A.	Familiarize with the format of Snort rules
+
+•	Snort rules typically perform one of the five actions:
+o	Alert – Generate an alert using the specified alert method and log the packet.
+o	Log – log the packets only.
+o	Pass – Ignore the packet.
+o	Active – Signal an alert and turn on another dynamic rule.
+o	Dynamic – remain idle until activated by an active rule and then switch to a log rule mode.
+•	Snort allows you to write rules describing:
+o	well-known and common vulnerability exploitation attempts.
+o	violations of your security policy.
+o	conditions under which you think a network packet(s) might be anomalous.
+•	Using an easy-to-understand and lightweight rule-description language, Snort rules can be both flexible and robust; written both for protocol analysis and content searching and matching.
+•	Two basic guiding principles must be kept in mind when writing Snort rules:
+o	Rules must be completely contained on a single line.
+o	Rules are divided into two logical sections of the rule header and rule options. The rule header contains the rule action, protocol, source and destination IP addresses, CIDR (Classless Inter-Domain Routing) block, and source and destination ports. The rule option section contains alert messages and information about which parts of the packet to inspect when determining if the rule action should be taken.
+
+B.	The Basic format for a Snort rule follows
+
+<action> <protocol> <source IP> -> <destination IP> <destination port> (options)
+
+•	Example 1 rule:
+o	Log TCP traffic from a 192.168.0.x network port 22 (SSH) to any external network and any other port:
+	log tcp 192.168.0.0/24 22 -> any any
+•	Example 2 rule:
+o	Alert when incoming TCP traffic into network on port 80 has content /cgi-bin/default.idea by sending administrator message of “Code Red Worm!”:
+	alert tcp any any -> 192.168.0.0/24 80 (content: "cgi-bin/default.idea"; msg: "Code Red Worm!" ; sid:1000001;)
+•	Example 3 rule:
+o	Alert when incoming TCP traffic from any IP address on any port destined to any host id in 192.168.0.0 network on port 111 has content |00 01 86 a5| by administrator message of “mountd access”:
+	alert tcp any any -> 192.168.0.0/24 111 (content:"|00 01 86 a5|"; msg: "mountd access"; sid:1000002;)
+•	The part of the rule up to the first parentheses is the rule header,
+o	alert tcp any any -> 192.168.0.0/24 111
+•	while section enclosed in parenthesis are rule options:
+o	(content:"|00 01 86 a5|"; msg: "mountd access";)
+•	The word(s) before the colons in the rule options section, in bold above, are called option keywords. 
+•	Example 4 rule:
+	alert tcp any any -> any 21 (content:"site exec"; content:"%"; msg:"site exec buffer overflow attempt"; sid:1000003;)
+The above rule illustrates an FTP vulnerability. Notice the keyword "content" appears twice because the two strings that "content" describes are not concatenated but appear at different locations within the packet(s). For this rule to be violated, the content of a packet(s) must contain both character strings, "site exec" and "%".
+Ls
+The rule options section is not specifically required by any rule; it is used for the sake of making tighter definitions of packets to collect or to issue an alert.
+Note: these last three examples above have a sid option, which indicates the signature ID. In general rules are specified by gid:sid:rev notation, where gid is the generator ID and rev is the revision of the rule. By default, text rules are gid 1 and shared-object (SO) rules are gid 3. The various components within Snort that generate events have 1XX gids.
+C.	Update your Rules for NIDS processing in Security Onion
+•	NIDS rulesets in Security Onion are specified in /etc/nsm/pulledpork/pulledpork.conf where local rules are specified in /etc/nsm/rules/local.rules. If you change any of the configuration in /etc/nsm/pulledpork/, then you will need to update your rules for NIDS processing in Security Onion.
+ 
+Pull rules from github to save time
+Note: Use the following command to pull the rules into your security onion server from PLABS. You can then open the downloaded snort rules file and copy and paste the rules locally into the local.rules file. Additional files are also provided that can help students later in the lab. 
+git clone https://github.com/ndctdmh/262-snort
+The file called " local.rules" will be downloaded into a directory called 262-snort on your server. Open the file to copy and paste the rules without having to type them in the steps below.
+
+•	Use gedit with sudo command for escalated privilege to edit local rules file then copy the provided four (4) rules above then Save the file.
+sudo gedit /etc/nsm/rules/local.rules
+•	Next let’s test execute Snort using this rules configuration file:
+
+sudo snort -T -c /etc/nsm/rules/local.rules
+
+2.1(Screenshot) – Take a screen shot of Snort “Initializing rule chains” with all 4 local Snort detection rules read with “Option Chains linked”.
+
+2.2(Screenshot) – Take a screen shot showing that Snort successfully validated the configuration.
+
+D.	Enable multiple rule files.
+•	Snort rule files are defined in the snort.conf file with elements of an individual rule analyzed as formed using a logical AND statement. The complete collection of rules in a Snort rules library file are treated as forming a larger logical OR statement.  
+•	In Security Onion, snort.conf is located in /etc/nsm/HOSTNAME-INTERFACE/ where HOSTNAME is your actual hostname and INTERFACE is your actual sniffing interface; our hostname and interface is plabsonion1-eth0 shown below.
+
+ 
+
+•	Although you can add any rules in the main snort.conf file, the convention is to use separate files for rules in /etc/nsm/rules directory. These rule files are then included inside the main configuration file using the include keyword.
+•	Use gedit with sudo privileges to uncomment the include statement for local.rules in snort.conf.
+	
+•	In Security Onion, executing rule-update will merge local.rules into downloaded.rules, update sid-msg.map, and restart all NIDS processes as necessary:
+sudo rule-update
+•	Review /var/log/nsm/sid_changes.log for details.
+
+E.	Notes about Snort rule writing
+
+Rule Actions:
+alert tcp any any -> any any (msg:"My Name!"; content:"Skon";sid:1000003;rev:1;)
+•	The rule header contains the information that defines the "who, where, and what" of a packet, as well as what to do when a packet occurs with all the attributes indicated in the rule. The first field in a rule is the rule action. The rule action tells Snort what to do when it finds a packet that matches the rule criteria. There typically used actions are three available in Snort:
+o	alert - generates an alert using the selected alert method, and then log the packet.
+o	log - logs the packet.
+o	pass - drops (ignore) the packet
+Protocols:
+•	The next field in a rule is the protocol. There are three IP protocols that Snort currently analyzes for suspicious behavior, TCP, UDP, and ICMP. In the future there may be more, such as ARP, IGRP, GRE, OSPF, RIP, and IPX.
+IP Addresses:
+•	The next portion of the rule header deals with the IP address and port information. The keyword "any" may be used to define any address. Snort does not have a mechanism to provide host name lookup for the IP address fields in the rules file. The addresses are formed by a straight numeric IP address and a CIDR block. The CIDR block indicates the netmask that should be applied to the rule's address and any incoming packets that are tested against the rule. A CIDR block mask of /24 indicates a Class C network, /16 a Class B network, and /32 a specific machine address. For example, the address/CIDR combination 192.168.1.0/24 would signify the block of addresses from 192.168.1.1 to 192.168.1.255. Any rule that used this designation for, say, the destination address would match on any address in that range. The CIDR designations give us an easy way to designate large address spaces with just a few characters.
+•	In Example 1 (above), the source IP address was set to match for any computer communicating, and the destination address was set to match on the 192.168.1.0 Class C network.
+•	A negation operator can be applied to IP addresses. This operator tells Snort to match any IP address except the one indicated by the listed IP address. The negation operator is indicated with a "!". For example, an easy modification to the initial example is to make it alert on any traffic that originates outside of the local network with the negation operator as shown in Example 3.
+alert tcp !192.168.1.0/24 any -> 192.168.1.0/24 111 (content: "|00 01 86 a5|"; msg: "external mountd access"; sid:1000004;)
+•	This rule's IP addresses indicate "any TCP packet with a source IP address not originating from the internal network and a destination address on the internal network".
+Port Numbers:
+•	Port numbers may be specified in a number of ways, including "any" ports, static port definitions, ranges, and by negation. "Any" ports are a wildcard value, meaning literally any port. Static ports are indicated by a single port number, such as 111 for portmapper, 23 for telnet, or 80 for http. Port ranges are indicated with the range operator ":". The range operator may be applied in a number of ways, such as an Example 4.
+
+log udp any any -> 192.168.1.0/24 1:1024
+•	Log UDP traffic coming from any port and destination ports ranging from 1 to 1024.
+
+log tcp any any -> 192.168.1.0/24 :6000
+•	Log TCP traffic from any port going to ports less than or equal to 6000.
+
+log tcp any :1024 -> 192.168.1.0/24 500:
+•	Log TCP traffic from privileged ports less than or equal to 1024 going to ports greater than or equal to 500.
+•	The negation operator, "!", may be applied against any of the other rule types (except "any", which would translate to none).
+log tcp any any -> 192.168.1.0/24
+!6000:6010
+
+Direction Operator:
+•	The direction operator "->" indicates the orientation, or "direction", of the traffic that the rule applies to. The IP address and port numbers on the left side of the direction operator designate traffic coming from the source host, and the address and port information on the right side of the operator designate destination host. There is also a bi-directional operator, which is indicated with a "<>" symbol. This tells Snort to consider the address/port pairs in either the source or destination orientation. This is handy for recording and analyzing both sides of a conversation, such as telnet or POP3 sessions. An example of the bi-directional operator being used to record both sides of a telnet session is shown below.
+
+log 192.168.1.0/24 any <> 192.168.1.0/24 23
+
+In above, any traffic on any port originating from outside the internal network (192.168.1.x) with a destination of the internal network on the telnet port (23) is logged. Reciprocally, any telnet traffic originating from the internal network with a destination outside the internal network to any port is logged. Therefore, both sides of a telnet connection are logged.
+
+
+
+2.3(Question) – What if we wanted to create additional rules in file white_list.rules and black_list.rules? Hint: Search and review entries in snort.conf to determine. 
+What directory would we need to place these rule files on SecurityOnion? 
+How can system administrator verify that a Snort-generated alert is valid? 
+How would you tell Snort NIDS engine on Security Onion to also apply these new rule files in addition to rules already being applied? 
+
+Task 3: Snort Alerting
+Alerting, part of the Alerting and Logging subsystem, is activated at run-time through the use of command-line options. See command line options at introduction of this lab options or Snort user manual documentation from the Snort web site.
+A.	To fully trust an intrusion detection system (IDS) alert, you must examine three complementary data point:
+1.	Rule representing behavior you know or suspect of being anomalous.
+2.	Alerting message warning you of a rule violation or of particular behavior.
+3.	Network packet (or series of packets) causing the rule violation.
+In absence of having all three components, you must be able to relate the network packet to at least one of the following:
+•	Alerting message (of proposed intrusion or intrusion attempt).
+•	Rule violated (of proposed intrusion or intrusion attempt).
+If neither of these relationships occur, you can’t characterize the security event as a positive or negative. The network packet(s) is critical point-of-examination for investigation of whether rule is violated or alerting message displays a positive occurrence of violation to our security policy. Since Snort allows you to configure various levels of alerting and logging, recommended that Snort be set up to log offending packets causing rule violation and to record alerts in separate files.
+When Snort inspects a network packet and detects a match between a rule (describing a violation) and the network packet, Snort sends alerting message to user-defined facility or logs packets causing the rule violation. Alerts may either be sent to syslog or logged to an alert text file in two different formats using -K option. There are two options for sending the alerts to a plain text file of full and fast alerting using -A option. Full alerting writes the alert message and the packet header information through the transport layer protocol. The fast alert option writes a condensed subset of the header information to the alert file, allowing greater performance under load than full mode.
+Similarly, logging can be set up to "log packets in their decoded, human-readable format to an IP-based directory structure, or in tcpdump binary format to a single log file. The decoded format logging allows fast analysis of data collected by the system. The tcpdump format is much faster to record to the disk and should be used in instances where high performance is required. Logging can also be turned off completely, leaving alerts enabled for even greater performance improvements."
+3.1 (Question) – How would you handle searching through alerts efficiently to link and examine the three complementary data points needed to investigate a network IDS violation (2-3 sentences)? 
+The configuration steps in the following sections (B,C and D) are informational only and the command output is not required in your report. You are encouraged to try some of these steps.
+The multiple lines of configuration settings referenced below are downloaded with the original github repo you downloaded in the beginning of the LAB. Use the appropriate file to copy and paste and save time.
+ 
+B.	Snort sends all alert to enabled output plugins, which is what you want for reporting.
+•	If you want to escalate a specific alert to an email message, you must differentiate that alert from others. One way to do this is creating a custom rule type in snort.conf. For example, the sev1 rule type:
+ruletype sev1
+\{
+   type alert
+   output alert_syslog:
+     LOG_LOCAL5
+   output database: log, mysql,
+      user=snort dbname=snort
+     host=dbserver.domain.com
+     sensor_name=External
+\}
+•	Defines an alert type that overrides any previous output plugins in favor of those listed in its definition. This sev1 rule type sends alerts to Syslog and logs the alerts to a database. Note: we would actually need to define the database named snort in MySQL to use sev1.
+•	You must also update the /etc/syslog-ng/syslog-ng.conf file to recognize inbound Syslog messages from the local5 facility since this example assumes that the local5 facility is being used only for Snort logging. The line
+
+local5.*        /var/log/snort
+
+writes any received alerts from the local5 facility to the /var/log/snort text file.
+
+C.	Snort filters for higher-sensitivity real-time alerts rather than filtering downstream in Syslog.
+•	This approach reduces traffic and maximizes Syslog performance since Syslog handles only alerts that Snort determines are worthy of an email message. If you use the above configuration settings, Snort will forward any sev1 alert to Syslog as a local5 facility message. Syslog will write these messages to the /var/log/snort text file.
+•	Use gedit with sudo privileges to uncomment the output statement for alert_syslog and log_tcpdump in /etc/nsm/plabsonion1-eth0/snort.conf.
+•	Next, let’s define simpler ruletype called multi that uses existing already available output modules just uncommented in snort.config file by updating local.rules as default for custom rules:
+sudo gedit /etc/nsm/rules/local.rules
+•	Add the multi ruletype followed by two custom rules in local.rules:
+ruletype multi
+{
+type alert
+output alert_syslog: LOG_AUTH LOG_ALERT
+output log_tcpdump: snort.log
+}
+
+multi tcp any any -> any any (msg:"Severity One rule-test for Snort"; content:"sev1"; nocase; )
+
+alert tcp any any -> any any (msg:"Severity Two rule-test for Snort"; content:"normal"; nocase; )
+•	The first rule begins with the multi rule type instead of the action alert, so when Snort identifies a packet matching the multi signature, it processes the packet according to the custom defined multi rule type with three assigned output modules. The Severity Two rule represents any custom rules you've defined for your Snort environment. The Severity Two rule is defined as an alert rule type, and Snort processes it in the same manner as it processes other default Snort rules.
+
+
+D.	Execute Snort using these rules in the local rules configuration file:
+
+sudo snort -T -c /etc/nsm/rules/local.rules
+
+3.2 (Question) – Discuss appropriate NIDS scenarios when you would filter alerts within Snort or downstream with an add-on-real-time monitoring tool like Syslog (2-3 sentences)? 
+
+E.	Snort Scenario Analysis
+
+Consider the Snort deployment in the network shown below then answer the following lab analysis questions.
+ 
+3.3 (Question) – Why is Snort deployed in the DMZ instead of the Internal Network? Provide justification argument (2-3 sentences) to organization management for this NIDS deployment with Snort.
+
+3.4 (Question) – What is the following Snort rule attempting to prevent with regards to network traffic and the DMZ? When a packet matches this rule, an alert is raised, and an administrator will receive a notice (message) from Snort. What will the notice say to administrator?
+alert tcp any any -> 195.4.12.0/24 111 (content: "|00 01 B6 a5|"; msg:
+"external mountd access";)
+3.5 (Question) – Explain the meaning of the following Snort rule:
+alert tcp any any -> any 21 (msg: "FTP ROOT"; content: "USER root"; nocase:)
+
+
+Appendix A - Switching from Snort to Suricata
+This information is not required on your lab, it is for reference only.
+Note: When running the Snort Talos ruleset, Snort Shared Object rules will not load in Suricata. Most folks who choose the Suricata engine choose to run the Emerging Threats ruleset.
+sudo so-sensor-stop
+sudo sed -i 's|ENGINE=snort|ENGINE=Suricata|g' /etc/nsm/securityonion.conf
+sudo rule-update
+sudo so-sensor-start
+Switching from Suricata to Snort
+sudo so-sensor-stop
+sudo sed -i 's|ENGINE=suricata|ENGINE=snort|g' /etc/nsm/securityonion.conf
+sudo rule-update
+sudo so-sensor-start
+
+
+version fa20.1
